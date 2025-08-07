@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# Directory to save JSON files
+OUTPUT_DIR="pokemon_data"
+POKEMON_LIST=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+ERROR_LOG="errors.log"
+
+# Create output directory if it doesn't exist
+mkdir -p "$OUTPUT_DIR"
+
+# Clear or create the error log
+: > "$ERROR_LOG"
+
+# Function to fetch a single Pokémon with retry logic
+fetch_pokemon() {
+    local name="$1"
+    local url="https://pokeapi.co/api/v2/pokemon/$name"
+    local output_file="$OUTPUT_DIR/${name}.json"
+
+    local attempt=1
+    local max_attempts=3
+    local delay=2
+
+    while [ $attempt -le $max_attempts ]; do
+        echo "Fetching data for $name (Attempt $attempt)..."
+        status_code=$(curl -s -w "%{http_code}" -o "${output_file}.tmp" "$url")
+
+        if [ "$status_code" -eq 200 ]; then
+            mv "${output_file}.tmp" "$output_file"
+            echo "Saved data to $output_file ✅"
+            return 0
+        else
+            echo "⚠️  Failed (HTTP $status_code) on attempt $attempt."
+            ((attempt++))
+            sleep $delay
+        fi
+    done
+
+    echo "❌ Failed to fetch data for $name after $max_attempts attempts. Skipping."
+    echo "$name - Failed after $max_attempts attempts (last status: $status_code)" >> "$ERROR_LOG"
+    rm -f "${output_file}.tmp"
+    return 1
+}
+
+# Loop through all Pokémon and fetch them
+for pokemon in "${POKEMON_LIST[@]}"; do
+    fetch_pokemon "$pokemon"
+done
+
+# Show summary
+echo ""
+echo "✅ All requests processed."
+if [ -s "$ERROR_LOG" ]; then
+    echo "⚠️  Some errors occurred. Check $ERROR_LOG for details."
+else
+    echo "🎉 No errors. All Pokémon fetched successfully!"
+fi
